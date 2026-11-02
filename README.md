@@ -118,10 +118,3 @@ npx vercel --prod
 
 ---
 
-## 👤 Tác Giả
-
-* **Hoàng BH** - *Developer & Hardware Engineer*
-* **GitHub:** [@HoangBH28](https://github.com/HoangBH28)
-
----
-*Dự án phục vụ mục đích học tập và nghiên cứu ứng dụng IoT trong đô thị thông minh.*
