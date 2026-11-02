@@ -130,7 +130,7 @@ void loop() {
     if (Firebase.getInt(fbdo, "/BTL_SmartParking/parking_slots/slot3")) s3 = fbdo.intData();
     if (Firebase.getInt(fbdo, "/BTL_SmartParking/parking_slots/slot4")) s4 = fbdo.intData();
 
-    int totalOccupied = (s1 == 2) + (s2 == 2) + (s3 == 2) + (s4 == 2);
+    int totalOccupied = (s1 == 1) + (s2 == 1) + (s3 == 1) + (s4 == 1);
     int totalEmpty = 4 - totalOccupied;
 
     Serial.print("[SYSTEM LOOP] Slot trong: ");
