@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Bãi Đỗ Xe Thông Minh - Smart Parking</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- QRCode JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Firebase SDK v8 (Thêm Auth) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #qr-entry img, #qr-exit img {
+            margin: 0 auto;
+        }
+        /* Hiệu ứng loading */
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen relative selection:bg-blue-500/30">
+
+    <!-- ==================== PHẦN 1: GIAO DIỆN ĐĂNG NHẬP / ĐĂNG KÝ ==================== -->
+    <div id="auth-section" class="min-h-screen flex items-center justify-center p-4 relative z-20">
+        <div class="glass-card p-8 rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden">
+            <div class="absolute -top-20 -right-20 w-40 h-40 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
+            <div class="absolute -bottom-20 -left-20 w-40 h-40 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
+
+            <div class="text-center mb-8 relative z-10">
+                <i class="fa-solid fa-square-parking text-5xl text-blue-500 mb-3"></i>
+                <h2 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">SMART PARKING</h2>
+                <p class="text-slate-400 text-sm mt-1" id="auth-subtitle">Đăng nhập để vào hệ thống</p>
+            </div>
+
+            <!-- Form Đăng nhập -->
+            <form id="login-form" class="space-y-4 relative z-10" onsubmit="handleLogin(event)">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Email</label>
+                    <input type="email" id="login-email" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mật khẩu</label>
+                    <input type="password" id="login-pass" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <button type="submit" id="btn-login" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2 mt-2">
+                    Đăng Nhập <i class="fa-solid fa-arrow-right"></i>
+                </button>
+                <p class="text-center text-sm text-slate-400 mt-4">
+                    Chưa có tài khoản? <a href="#" onclick="toggleAuth('register')" class="text-blue-400 hover:underline">Đăng ký ngay</a>
+                </p>
+            </form>
+
+            <!-- Form Đăng ký -->
+            <form id="register-form" class="space-y-4 relative z-10 hidden" onsubmit="handleRegister(event)">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Họ và Tên</label>
+                    <input type="text" id="reg-name" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Email</label>
+                    <input type="email" id="reg-email" required class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">Mật khẩu (Tối thiểu 6 ký tự)</label>
+                    <input type="password" id="reg-pass" required minlength="6" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 outline-none focus:border-blue-500 transition text-sm">
+                </div>
+                <button type="submit" id="btn-register" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition flex justify-center items-center gap-2 mt-2">
+                    Đăng Ký Tài Khoản
+                </button>
+                <p class="text-center text-sm text-slate-400 mt-4">
+                    Đã có tài khoản? <a href="#" onclick="toggleAuth('login')" class="text-purple-400 hover:underline">Đăng nhập</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== PHẦN 2: DASHBOARD HỆ THỐNG CHÍNH ==================== -->
+    <div id="dashboard-section" class="max-w-6xl mx-auto space-y-8 p-4 md:p-8 hidden relative z-10">
+        
+        <!-- HEADER DASHBOARD -->
+        <header class="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-2xl">
+            <div class="flex items-center gap-4">
+                <div class="p-3 bg-blue-600/20 text-blue-400 rounded-xl text-3xl">
+                    <i class="fa-solid fa-square-parking"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">
+                        SMART PARKING
+                    </h1>
+                    <p class="text-xs text-slate-400">Hệ thống quản lý bãi đỗ xe IoT</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-4 bg-slate-800/80 px-5 py-3 rounded-xl border border-slate-700">
+                    <div>
+                        <div class="text-xs text-slate-400 flex items-center gap-1">
+                            <i class="fa-solid fa-circle-user text-blue-400"></i>
+                            <span id="user-name">Đang tải...</span>
+                        </div>
+                        <div class="text-lg font-bold text-emerald-400 mt-0.5">
+                            <span id="wallet-balance">0</span> <span class="text-xs">VNĐ</span>
+                        </div>
+                    </div>
+                    <button onclick="openTopUpModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-semibold transition shadow-lg shadow-emerald-900/20 active:scale-95">
+                        <i class="fa-solid fa-plus"></i> Nạp
+                    </button>
+                </div>
+                <button onclick="handleLogout()" class="bg-slate-800 hover:bg-rose-900/50 text-slate-300 hover:text-rose-400 p-3 rounded-xl border border-slate-700 transition">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- BANNER THÔNG BÁO TÌNH TRẠNG BÃI ĐỖ -->
+        <div id="parking-status-banner" class="bg-slate-800/50 border border-slate-700 p-4 rounded-xl text-center transition-colors">
+            <span class="text-sm font-semibold text-slate-300 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-spinner fa-spin"></i> Đang tải thông tin bãi đỗ...
+            </span>
+        </div>
+
+        <!-- KHU VỰC CỔNG BÁO MÃ QR VÀ NÚT BẤM THỦ CÔNG -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- CỔNG VÀO (ENTRY) -->
+            <div class="glass-card p-6 rounded-2xl shadow-xl border-l-4 border-l-blue-500 flex flex-col justify-between h-full">
+                <div class="text-center mb-4">
+                    <h3 class="text-xl font-bold text-blue-400 mb-2 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-right-to-bracket"></i> CỔNG VÀO (CHECK-IN)
+                    </h3>
+                    <p class="text-sm text-slate-400">Quét QR hoặc bấm nút thủ công để mở cổng</p>
+                </div>
+                <div id="qr-entry" class="bg-white p-4 rounded-2xl shadow-lg border-4 border-blue-50/10 mb-6 mx-auto w-max min-h-[160px] flex items-center justify-center">
+                    <div class="loader"></div>
+                </div>
+                <button id="btn-checkin" onclick="checkIn()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-car"></i> MỞ CỔNG VÀO
+                </button>
+            </div>
+
+            <!-- CỔNG RA (EXIT) -->
+            <div class="glass-card p-6 rounded-2xl shadow-xl border-l-4 border-l-purple-500 flex flex-col justify-between h-full">
+                <div class="text-center mb-4">
+                    <h3 class="text-xl font-bold text-purple-400 mb-2 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-right-from-bracket"></i> CỔNG RA (CHECK-OUT)
+                    </h3>
+                    <p class="text-sm text-slate-400">Thanh toán vé để ra ngoài</p>
+                </div>
+                <div id="qr-exit" class="bg-white p-4 rounded-2xl shadow-lg border-4 border-purple-50/10 mb-6 mx-auto w-max min-h-[160px] flex items-center justify-center">
+                    <div class="loader"></div>
+                </div>
+                <button onclick="checkOut()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 active:scale-95">
+                    <i class="fa-solid fa-credit-card"></i> THANH TOÁN & MỞ CỔNG RA
+                </button>
+            </div>
+        </div>
+
+        <!-- SƠ ĐỒ TRẠNG THÁI Ô ĐỖ XE -->
+        <div class="glass-card p-6 rounded-2xl shadow-xl space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                    <h3 class="text-lg font-bold text-yellow-400 flex items-center gap-2">
+                        <i class="fa-solid fa-border-all"></i> SƠ ĐỒ BÃI ĐỖ XE REALTIME
+                    </h3>
+                    <p class="text-xs text-slate-400">Dữ liệu đồng bộ trực tiếp từ trạm cảm biến ESP32</p>
+                </div>
+                <div class="flex gap-3 text-xs">
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Trống</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Đã đặt</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Có xe</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="slots-container">
+                <!-- Sẽ được render tự động bằng JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PHẦN 3: MODAL NẠP TIỀN ==================== -->
+    <div id="topup-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-opacity">
+        <div class="glass-card w-full max-w-sm rounded-2xl shadow-2xl p-6 relative">
+            <button onclick="closeTopUpModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white transition">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            <h3 class="text-xl font-bold text-emerald-400 mb-2"><i class="fa-solid fa-wallet"></i> Nạp Tiền Vào Ví</h3>
+            <p class="text-sm text-slate-400 mb-6">Chọn mệnh giá nạp nhanh để sử dụng dịch vụ.</p>
+            
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <button onclick="processTopUp(20000)" class="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 hover:border-emerald-500 py-3 rounded-xl font-semibold transition active:scale-95 text-slate-300">20.000đ</button>
+                <button onclick="processTopUp(50000)" class="bg-slate-800 hover:bg-emerald-900/50 border border-emerald-600/50 hover:border-emerald-400 py-3 rounded-xl font-bold transition active:scale-95 text-emerald-400 shadow-lg shadow-emerald-900/20">50.000đ</button>
+                <button onclick="processTopUp(100000)" class="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 hover:border-emerald-500 py-3 rounded-xl font-semibold transition active:scale-95 text-slate-300">100.000đ</button>
+                <button onclick="processTopUp(200000)" class="bg-slate-800 hover:bg-emerald-900/50 border border-slate-700 hover:border-emerald-500 py-3 rounded-xl font-semibold transition active:scale-95 text-slate-300">200.000đ</button>
+            </div>
+            
+            <p class="text-xs text-center text-slate-500"><i class="fa-solid fa-shield-halved"></i> Giao dịch an toàn & bảo mật qua SSL</p>
+        </div>
+    </div>
+
+    <!-- ==================== SCRIPT XỬ LÝ LOGIC ==================== -->
+    <script>
+        const firebaseConfig = {
+          apiKey: "AIzaSyBUpHRPNoHCC79f3di3y1hbax7dqZkIumY",
+          authDomain: "bai-do-xe-thong-minh-e7f0e.firebaseapp.com",
+          databaseURL: "https://bai-do-xe-thong-minh-e7f0e-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "bai-do-xe-thong-minh-e7f0e",
+          storageBucket: "bai-do-xe-thong-minh-e7f0e.firebasestorage.app",
+          messagingSenderId: "4074028916",
+          appId: "1:4074028916:web:fadc7a1d945e6216283621"
+        };
+        firebase.initializeApp(firebaseConfig);
+        
+        var auth = firebase.auth();
+        var db = firebase.database();
+        var baseRef = "/BTL_SmartParking";
+        var currentUser = null;
+        var userDataListener = null;
+
+        var availableSlotsCount = 0; 
+        var userHasBooking = false;  
+
+        var currentHardwareSlots = {slot1: 0, slot2: 0, slot3: 0, slot4: 0};
+        var currentBookings = {};
+
+        // LOGIC TỰ ĐỘNG HỦY BOOKING NẾU QUÁ 10 PHÚT (TIMEOUT)
+        setInterval(function() {
+            if (!currentBookings) return;
+            var now = Date.now();
+            for (let slotId in currentBookings) {
+                var booking = currentBookings[slotId];
+                if (booking.expiresAt && now > booking.expiresAt) {
+                    db.ref(baseRef + '/parking_slots/' + slotId).set(0);
+                    db.ref(baseRef + '/bookings/' + slotId).remove();
+                    if(currentUser && booking.uid === currentUser.uid) {
+                        alert(`⏰ HẾT GIỜ! Phiên đặt chỗ ô ${slotId.toUpperCase()} đã quá 10 phút. Hệ thống đã giải phóng chỗ và bạn bị mất 2.000đ tiền cọc.`);
+                    }
+                }
+            }
+        }, 5000); 
+
+        function toggleAuth(type) {
+            if (type === 'register') {
+                document.getElementById('login-form').classList.add('hidden');
+                document.getElementById('register-form').classList.remove('hidden');
+                document.getElementById('auth-subtitle').innerText = "Đăng ký tài khoản mới";
+            } else {
+                document.getElementById('register-form').classList.add('hidden');
+                document.getElementById('login-form').classList.remove('hidden');
+                document.getElementById('auth-subtitle').innerText = "Đăng nhập để vào hệ thống";
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            var email = document.getElementById('login-email').value;
+            var pass = document.getElementById('login-pass').value;
+            var btn = document.getElementById('btn-login');
+            btn.innerHTML = '<div class="loader"></div>'; 
+            
+            auth.signInWithEmailAndPassword(email, pass).catch(function(error) {
+                alert("Lỗi đăng nhập: " + error.message);
+                btn.innerHTML = 'Đăng Nhập <i class="fa-solid fa-arrow-right"></i>';
+            });
+        }
+
+        function handleRegister(e) {
+            e.preventDefault();
+            var name = document.getElementById('reg-name').value;
+            var email = document.getElementById('reg-email').value;
+            var pass = document.getElementById('reg-pass').value;
+            var btn = document.getElementById('btn-register');
+            btn.innerHTML = '<div class="loader"></div>';
+
+            var isCompleted = false;
+            var timer = setTimeout(function() {
+                if (!isCompleted) {
+                    isCompleted = true;
+                    btn.innerHTML = 'Đăng Ký Tài Khoản';
+                    alert("Kết nối chậm. Kiểm tra lại Authentication!");
+                }
+            }, 6000);
+
+            auth.createUserWithEmailAndPassword(email, pass).then(function(userCredential) {
+                if (isCompleted) return;
+                isCompleted = true;
+                clearTimeout(timer);
+
+                db.ref(baseRef + '/users/' + userCredential.user.uid).set({
+                    name: name,
+                    wallet_balance: 0,
+                    is_vip_session: false 
+                });
+            }).catch(function(error) {
+                if (isCompleted) return;
+                isCompleted = true;
+                clearTimeout(timer);
+                alert("Lỗi đăng ký: " + error.message);
+                btn.innerHTML = 'Đăng Ký Tài Khoản';
+            });
+        }
+
+        function handleLogout() {
+            if(confirm("Bạn có chắc muốn đăng xuất?")) auth.signOut();
+        }
+
+        auth.onAuthStateChanged(function(user) {
+            if (user) {
+                currentUser = user;
+                document.getElementById('auth-section').classList.add('hidden');
+                document.getElementById('dashboard-section').classList.remove('hidden');
+                
+                initDashboardData();
+                generateQRCodes();
+                checkUrlParams(); 
+            } else {
+                currentUser = null;
+                document.getElementById('auth-section').classList.remove('hidden');
+                document.getElementById('dashboard-section').classList.add('hidden');
+                document.getElementById('btn-login').innerHTML = 'Đăng Nhập <i class="fa-solid fa-arrow-right"></i>';
+                if(userDataListener) db.ref(baseRef + '/users/' + currentUser?.uid).off('value', userDataListener);
+            }
+        });
+
+        function refreshCheckInUI() {
+            var banner = document.getElementById('parking-status-banner');
+            var btnCheckin = document.getElementById('btn-checkin');
+
+            if (availableSlotsCount > 0) {
+                banner.className = "bg-emerald-900/40 border border-emerald-700/50 p-4 rounded-xl text-center transition-colors shadow-[0_0_15px_rgba(16,185,129,0.1)]";
+                banner.innerHTML = `<span class="text-sm font-bold text-emerald-400 flex items-center justify-center gap-2"><i class="fa-solid fa-circle-check"></i> Bãi đỗ đang còn ${availableSlotsCount} chỗ trống</span>`;
+                
+                btnCheckin.disabled = false;
+                btnCheckin.className = "w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 active:scale-95";
+                btnCheckin.innerHTML = '<i class="fa-solid fa-car"></i> MỞ CỔNG VÀO';
+            } else {
+                banner.className = "bg-rose-900/40 border border-rose-700/50 p-4 rounded-xl text-center transition-colors shadow-[0_0_15px_rgba(244,63,94,0.1)]";
+                banner.innerHTML = `<span class="text-sm font-bold text-rose-400 flex items-center justify-center gap-2"><i class="fa-solid fa-triangle-exclamation"></i> Bãi đỗ hiện tại ĐÃ ĐẦY</span>`;
+                
+                if (userHasBooking) {
+                    btnCheckin.disabled = false;
+                    btnCheckin.className = "w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 active:scale-95";
+                    btnCheckin.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> VÀO BÃI (DÙNG VÉ VIP ĐẶT TRƯỚC)';
+                } else {
+                    btnCheckin.disabled = true;
+                    btnCheckin.className = "w-full bg-slate-800 text-slate-500 font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 cursor-not-allowed border border-slate-700";
+                    btnCheckin.innerHTML = '<i class="fa-solid fa-ban"></i> BÃI ĐÃ ĐẦY - KHÔNG THỂ VÀO';
+                }
+            }
+        }
+
+        function recalculateGlobalState() {
+            var count = 0;
+            var slotIds = ["slot1", "slot2", "slot3", "slot4"];
+
+            slotIds.forEach(function(slotId) {
+                var status = currentHardwareSlots[slotId] !== undefined ? currentHardwareSlots[slotId] : 0; 
+                var bookingData = currentBookings[slotId];
+                
+                if (bookingData) {
+                    if (status === 0) {
+                        status = 1;
+                        db.ref(baseRef + '/parking_slots/' + slotId).set(1);
+                    }
+                }
+
+                if (status === 0) {
+                    count++;
+                }
+
+                var isMyBooking = (bookingData && currentUser && bookingData.uid === currentUser.uid);
+                var card = document.getElementById(`card-${slotId}`);
+                if(!card) return;
+                
+                var badge = document.getElementById(`badge-${slotId}`);
+                var icon = document.getElementById(`icon-${slotId}`);
+                var statusText = document.getElementById(`status-${slotId}`);
+                var btn = card.querySelector('button');
+
+                if (status === 0) {
+                    card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-emerald-500/40 shadow-lg shadow-emerald-950/20";
+                    badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                    badge.innerText = "Sẵn sàng";
+                    icon.className = "fa-solid fa-circle-check text-5xl text-emerald-400 animate-pulse";
+                    statusText.innerText = "Ô TRỐNG";
+                    statusText.className = "text-sm font-bold mt-3 text-emerald-400";
+                    
+                    btn.innerHTML = '<i class="fa-solid fa-bookmark"></i> Đặt chỗ (Cọc 2.000đ)';
+                    btn.className = "w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 py-2.5 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2";
+                    btn.disabled = false;
+                } else if (status === 1) {
+                    card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-amber-500/40 shadow-lg shadow-amber-950/20";
+                    badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20";
+                    badge.innerText = "Đã đặt";
+                    icon.className = "fa-solid fa-clock text-5xl text-amber-400";
+                    
+                    let remainingStr = "";
+                    if(bookingData && bookingData.expiresAt) {
+                        let msLeft = bookingData.expiresAt - Date.now();
+                        let mins = Math.max(0, Math.floor(msLeft / 60000));
+                        remainingStr = ` (Còn ${mins}p)`;
+                    }
+
+                    statusText.innerText = "ĐÃ ĐẶT TRƯỚC" + remainingStr;
+                    statusText.className = "text-sm font-bold mt-3 text-amber-400";
+                    
+                    if (isMyBooking) {
+                        btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Hủy giữ chỗ (Mất cọc)';
+                        btn.className = "w-full bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 py-2.5 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2";
+                        btn.disabled = false;
+                    } else {
+                        btn.innerHTML = '<i class="fa-solid fa-lock"></i> Đã được đặt';
+                        btn.className = "w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold cursor-not-allowed flex items-center justify-center gap-2";
+                        btn.disabled = true;
+                    }
+                } else {
+                    card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-rose-500/40 shadow-lg shadow-rose-950/20";
+                    badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20";
+                    badge.innerText = "Đang đỗ";
+                    icon.className = "fa-solid fa-car text-5xl text-rose-500";
+                    statusText.innerText = "ĐÃ CÓ XE";
+                    statusText.className = "text-sm font-bold mt-3 text-rose-400";
+                    
+                    btn.innerHTML = '<i class="fa-solid fa-car"></i> Đang đỗ xe';
+                    btn.className = "w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold cursor-not-allowed flex items-center justify-center gap-2";
+                    btn.disabled = true;
+                }
+            });
+
+            availableSlotsCount = count;
+            refreshCheckInUI();
+        }
+
+        function initDashboardData() {
+            var slotIds = ["slot1", "slot2", "slot3", "slot4"];
+            var container = document.getElementById("slots-container");
+            container.innerHTML = ""; 
+
+            slotIds.forEach(function(slotId, index) {
+                var cardHtml = `
+                    <div id="card-${slotId}" class="bg-slate-900/90 p-5 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4 transition-all duration-300">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="text-xs text-slate-400 uppercase font-semibold">Vị trí</span>
+                                <h4 class="text-xl font-extrabold text-white">SLOT 0${index + 1}</h4>
+                            </div>
+                            <span id="badge-${slotId}" class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400">...</span>
+                        </div>
+                        <div class="py-2 text-center">
+                            <i id="icon-${slotId}" class="fa-solid fa-square-parking text-5xl text-slate-600 transition-colors"></i>
+                            <p id="status-${slotId}" class="text-sm font-bold mt-3 text-slate-300">...</p>
+                        </div>
+                        <div class="pt-3 border-t border-slate-800/80">
+                            <button onclick="toggleBooking('${slotId}')" class="w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold">
+                                ...
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHtml;
+            });
+
+            db.ref(baseRef + '/parking_slots').on("value", function(snapshot) {
+                currentHardwareSlots = snapshot.val() || {};
+                recalculateGlobalState();
+            });
+
+            db.ref(baseRef + '/bookings').on("value", function(snapshot) {
+                currentBookings = snapshot.val() || {};
+                userHasBooking = false;
+                if(currentUser) {
+                    Object.values(currentBookings).forEach(function(booking) {
+                        if(booking.uid === currentUser.uid) {
+                            userHasBooking = true;
+                        }
+                    });
+                }
+                recalculateGlobalState();
+            });
+
+            userDataListener = db.ref(baseRef + '/users/' + currentUser.uid).on("value", function(snapshot) {
+                var data = snapshot.val();
+                if (data) {
+                    document.getElementById("user-name").innerText = data.name || "Tài xế";
+                    document.getElementById("wallet-balance").innerText = Number(data.wallet_balance || 0).toLocaleString();
+                }
+            });
+        }
+
+        function generateQRCodes() {
+            document.getElementById("qr-entry").innerHTML = "";
+            document.getElementById("qr-exit").innerHTML = "";
+            var currentUrl = window.location.href.split('?')[0];
+            new QRCode(document.getElementById("qr-entry"), {text: `${currentUrl}?action=entry&user=${currentUser.uid}`, width: 140, height: 140});
+            new QRCode(document.getElementById("qr-exit"), {text: `${currentUrl}?action=exit&user=${currentUser.uid}`, width: 140, height: 140});
+        }
+
+        function openTopUpModal() { document.getElementById('topup-modal').classList.remove('hidden'); }
+        function closeTopUpModal() { document.getElementById('topup-modal').classList.add('hidden'); }
+        
+        function processTopUp(amount) {
+            if(!currentUser) return;
+            db.ref(baseRef + '/users/' + currentUser.uid + '/wallet_balance').once("value").then(function(snapshot) {
+                var currentBalance = snapshot.val() || 0;
+                db.ref(baseRef + '/users/' + currentUser.uid).update({ wallet_balance: currentBalance + amount });
+                alert(`🎉 Đã nạp thành công ${amount.toLocaleString()}đ vào ví!`);
+                closeTopUpModal();
+            });
+        }
+
+        function checkIn() {
+            if(!currentUser) return alert("Vui lòng đăng nhập!");
+            
+            db.ref(baseRef + '/bookings').once("value").then(function(snapshot) {
+                var bookings = snapshot.val() || {};
+                var hasVIP = false;
+                var bookedSlotId = null;
+
+                for (let slotId in bookings) {
+                    if (bookings[slotId].uid === currentUser.uid) {
+                        hasVIP = true;
+                        bookedSlotId = slotId;
+                    }
+                }
+
+                if (availableSlotsCount <= 0 && !hasVIP) {
+                    return alert("⚠️ Xin lỗi, bãi đỗ hiện tại đã đầy! Bạn không có giữ chỗ trước nên không thể vào.");
+                }
+                
+                if (hasVIP) {
+                    db.ref(baseRef + '/bookings/' + bookedSlotId).remove();
+                    db.ref(baseRef + '/parking_slots/' + bookedSlotId).set(0);
+                    db.ref(baseRef + '/users/' + currentUser.uid).update({ is_vip_session: true });
+                    alert("🚗 Đã nhận diện VÉ VIP! Lệnh vào đã gửi. Barie sẽ mở!");
+                } else {
+                    db.ref(baseRef + '/users/' + currentUser.uid).update({ is_vip_session: false });
+                    alert("🚗 Lệnh vào đã gửi. Barie sẽ mở!");
+                }
+
+                db.ref(baseRef + '/gate').update({ entry_cmd: 1 });
+            });
+        }
+
+        function checkOut() {
+            if(!currentUser) return alert("Vui lòng đăng nhập!");
+            
+            db.ref(baseRef + '/users/' + currentUser.uid).once("value").then(function(snapshot) {
+                var userData = snapshot.val() || {};
+                var currentBalance = userData.wallet_balance || 0;
+                var isVipSession = userData.is_vip_session || false;
+                
+                var fee = isVipSession ? 3000 : 5000;
+
+                if (currentBalance >= fee) {
+                    db.ref(baseRef + '/users/' + currentUser.uid).update({ 
+                        wallet_balance: currentBalance - fee,
+                        is_vip_session: false 
+                    });
+                    
+                    db.ref(baseRef + '/gate').update({ exit_cmd: 1 });
+                    alert(`💳 Trừ ví ${fee.toLocaleString()}đ thành công (Sử dụng ${isVipSession ? 'Vé VIP - Đã cọc' : 'Vé Tiêu chuẩn'}). Đang mở cổng ra...`);
+                } else {
+                    alert(`⚠️ Ví không đủ tiền! Bạn cần ${fee.toLocaleString()}đ để thanh toán vé xe. Vui lòng nạp thêm.`);
+                    openTopUpModal();
+                }
+            });
+        }
+
+        // ====================================================
+        // LOGIC ĐẶT CHỖ MỚI: CHẶN ĐẶT 2 CHỖ / 1 TÀI KHOẢN
+        // ====================================================
+        function toggleBooking(slotId) {
+            if(!currentUser) return alert("Vui lòng đăng nhập!");
+            
+            db.ref(baseRef + '/bookings/' + slotId).once("value").then(function(snapshot) {
+                var bookingData = snapshot.val();
+                
+                if (!bookingData) {
+                    // KIỂM TRA BỨC TƯỜNG LỬA GIỚI HẠN 1 CHỖ
+                    if (userHasBooking) {
+                        let alreadyBookedSlot = "khác";
+                        for (let sid in currentBookings) {
+                            if (currentBookings[sid].uid === currentUser.uid) {
+                                alreadyBookedSlot = sid.toUpperCase();
+                                break;
+                            }
+                        }
+                        alert(`⚠️ TỪ CHỐI GIAO DỊCH: Bạn đang giữ chỗ tại ô ${alreadyBookedSlot}! Mỗi tài khoản chỉ được đặt tối đa 1 chỗ. Vui lòng hủy ô cũ hoặc hoàn thành lượt gửi xe hiện tại trước khi đặt ô mới.`);
+                        return; // Chặn lập tức, không chạy các lệnh trừ tiền bên dưới
+                    }
+
+                    // NẾU HỢP LỆ THÌ BẮT ĐẦU TRỪ TIỀN
+                    db.ref(baseRef + '/users/' + currentUser.uid + '/wallet_balance').once("value").then(function(userSnap) {
+                        var balance = userSnap.val() || 0;
+                        if(balance < 2000) {
+                            alert("⚠️ Số dư ví không đủ 2.000đ để đặt cọc! Vui lòng nạp thêm.");
+                            openTopUpModal();
+                            return;
+                        }
+                        
+                        db.ref(baseRef + '/users/' + currentUser.uid).update({ wallet_balance: balance - 2000 });
+                        db.ref(baseRef + '/parking_slots/' + slotId).set(1);
+                        db.ref(baseRef + '/bookings/' + slotId).set({
+                            uid: currentUser.uid,
+                            timestamp: Date.now(),
+                            expiresAt: Date.now() + 10 * 60 * 1000 
+                        });
+                        alert(`✅ Đặt chỗ thành công! Đã trừ 2.000đ cọc. Bạn có 10 phút để check-in.`);
+                    });
+                } 
+                else if (bookingData.uid === currentUser.uid) {
+                    if(confirm("Bạn muốn hủy giữ chỗ? (Lưu ý: Tiền cọc 2.000đ sẽ KHÔNG được hoàn lại)")) {
+                        db.ref(baseRef + '/parking_slots/' + slotId).set(0);
+                        db.ref(baseRef + '/bookings/' + slotId).remove();
+                        alert("Đã hủy đặt chỗ!");
+                    }
+                } 
+                else {
+                    alert("⚠️ Ô này đã có người khác giữ chỗ!");
+                }
+            });
+        }
+
+        function checkUrlParams() {
+            if(!currentUser) return; 
+            var urlParams = new URLSearchParams(window.location.search);
+            var action = urlParams.get('action');
+            if (action === 'entry') {
+                checkIn();
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (action === 'exit') {
+                checkOut();
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+    </script>
+</body>
+</html>
