@@ -5,7 +5,7 @@
 #include <ESP32Servo.h>
 
 // Cấu hình Wi-Fi & Firebase
-#define WIFI_SSID "Hoang Ku Pu"
+#define WIFI_SSID "Wifi cua ban"
 #define WIFI_PASSWORD "88888888@"
 #define FIREBASE_HOST "bai-do-xe-thong-minh-e7f0e-default-rtdb.asia-southeast1.firebasedatabase.app"
 #define FIREBASE_AUTH "Izdlneqg5dRPT5MCCORm1m7kZLiBPeLIqQKXnRuj"
