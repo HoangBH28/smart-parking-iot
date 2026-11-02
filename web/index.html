@@ -183,7 +183,8 @@
                 <div class="flex gap-3 text-xs">
                     <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Trống</span>
                     <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Đã đặt</span>
-                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Có xe</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> Có xe (Hợp lệ)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-600"></span> Đỗ trộm</span>
                 </div>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="slots-container">
@@ -244,7 +245,7 @@
             for (let slotId in currentBookings) {
                 var booking = currentBookings[slotId];
                 if (booking.expiresAt && now > booking.expiresAt) {
-                    db.ref(baseRef + '/parking_slots/' + slotId).set(0);
+                    // Không can thiệp parking_slots nữa, ESP32 sẽ tự cập nhật thực tế
                     db.ref(baseRef + '/bookings/' + slotId).remove();
                     if(currentUser && booking.uid === currentUser.uid) {
                         alert(`⏰ HẾT GIỜ! Phiên đặt chỗ ô ${slotId.toUpperCase()} đã quá 10 phút. Hệ thống đã giải phóng chỗ và bạn bị mất 2.000đ tiền cọc.`);
@@ -363,22 +364,36 @@
             }
         }
 
+        // =========================================================
+        // THUẬT TOÁN TÍNH TOÁN 4 TRẠNG THÁI & PHÁT HIỆN ĐỖ TRỘM
+        // =========================================================
         function recalculateGlobalState() {
             var count = 0;
             var slotIds = ["slot1", "slot2", "slot3", "slot4"];
 
             slotIds.forEach(function(slotId) {
-                var status = currentHardwareSlots[slotId] !== undefined ? currentHardwareSlots[slotId] : 0; 
+                // Đọc phần cứng từ ESP32 (0: Trống, 1: Có xe vật lý)
+                var hardwareStatus = currentHardwareSlots[slotId] !== undefined ? currentHardwareSlots[slotId] : 0; 
+                // Đọc phần mềm từ Web
                 var bookingData = currentBookings[slotId];
                 
+                var finalState = 0; // 0: Trống, 1: Đã đặt, 2: Có xe hợp lệ, 3: Đỗ trộm/Vi phạm
+
                 if (bookingData) {
-                    if (status === 0) {
-                        status = 1;
-                        db.ref(baseRef + '/parking_slots/' + slotId).set(1);
+                    if (hardwareStatus === 1) {
+                        finalState = 3; // TRẠNG THÁI 3: Có xe vật lý chui vào, nhưng chủ nhân chưa quét vé ở cổng!
+                    } else {
+                        finalState = 1; // TRẠNG THÁI 1: Trống vật lý, chờ chủ nhân tới
+                    }
+                } else {
+                    if (hardwareStatus === 1) {
+                        finalState = 2; // TRẠNG THÁI 2: Đỗ hợp pháp (Chủ nhân quét cổng -> thu hồi vé -> lái xe vào đỗ)
+                    } else {
+                        finalState = 0; // TRẠNG THÁI 0: Hoàn toàn trống
                     }
                 }
 
-                if (status === 0) {
+                if (finalState === 0) {
                     count++;
                 }
 
@@ -391,7 +406,8 @@
                 var statusText = document.getElementById(`status-${slotId}`);
                 var btn = card.querySelector('button');
 
-                if (status === 0) {
+                // --- RENDER GIAO DIỆN DỰA TRÊN 4 TRẠNG THÁI ---
+                if (finalState === 0) { // TRỐNG
                     card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-emerald-500/40 shadow-lg shadow-emerald-950/20";
                     badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
                     badge.innerText = "Sẵn sàng";
@@ -402,7 +418,9 @@
                     btn.innerHTML = '<i class="fa-solid fa-bookmark"></i> Đặt chỗ (Cọc 2.000đ)';
                     btn.className = "w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 py-2.5 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2";
                     btn.disabled = false;
-                } else if (status === 1) {
+                    btn.onclick = () => toggleBooking(slotId);
+                } 
+                else if (finalState === 1) { // ĐÃ ĐẶT CHỖ
                     card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-amber-500/40 shadow-lg shadow-amber-950/20";
                     badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20";
                     badge.innerText = "Đã đặt";
@@ -422,21 +440,35 @@
                         btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Hủy giữ chỗ (Mất cọc)';
                         btn.className = "w-full bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 py-2.5 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2";
                         btn.disabled = false;
+                        btn.onclick = () => toggleBooking(slotId);
                     } else {
                         btn.innerHTML = '<i class="fa-solid fa-lock"></i> Đã được đặt';
                         btn.className = "w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold cursor-not-allowed flex items-center justify-center gap-2";
                         btn.disabled = true;
                     }
-                } else {
-                    card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-rose-500/40 shadow-lg shadow-rose-950/20";
-                    badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20";
+                } 
+                else if (finalState === 2) { // ĐỖ HỢP LỆ
+                    card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-slate-500/40 shadow-lg shadow-slate-950/20";
+                    badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-slate-500/10 text-slate-400 border border-slate-500/20";
                     badge.innerText = "Đang đỗ";
-                    icon.className = "fa-solid fa-car text-5xl text-rose-500";
-                    statusText.innerText = "ĐÃ CÓ XE";
-                    statusText.className = "text-sm font-bold mt-3 text-rose-400";
+                    icon.className = "fa-solid fa-car text-5xl text-slate-500";
+                    statusText.innerText = "XE ĐỖ HỢP LỆ";
+                    statusText.className = "text-sm font-bold mt-3 text-slate-400";
                     
-                    btn.innerHTML = '<i class="fa-solid fa-car"></i> Đang đỗ xe';
+                    btn.innerHTML = '<i class="fa-solid fa-ban"></i> Không thể đặt';
                     btn.className = "w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold cursor-not-allowed flex items-center justify-center gap-2";
+                    btn.disabled = true;
+                }
+                else if (finalState === 3) { // BÁO ĐỘNG ĐỖ TRỘM
+                    card.className = "bg-slate-900/90 p-5 rounded-xl border-2 border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.4)] animate-pulse transition-all duration-300";
+                    badge.className = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-red-600 text-white shadow-lg";
+                    badge.innerText = "VI PHẠM";
+                    icon.className = "fa-solid fa-triangle-exclamation text-5xl text-red-500";
+                    statusText.innerText = "CẢNH BÁO ĐỖ TRỘM!";
+                    statusText.className = "text-sm font-bold mt-3 text-red-500";
+                    
+                    btn.innerHTML = '<i class="fa-solid fa-bullhorn"></i> Tranh chấp vị trí';
+                    btn.className = "w-full bg-red-900/50 text-red-400 border border-red-700 py-2.5 rounded-lg text-sm font-bold cursor-not-allowed flex items-center justify-center gap-2";
                     btn.disabled = true;
                 }
             });
@@ -465,7 +497,7 @@
                             <p id="status-${slotId}" class="text-sm font-bold mt-3 text-slate-300">...</p>
                         </div>
                         <div class="pt-3 border-t border-slate-800/80">
-                            <button onclick="toggleBooking('${slotId}')" class="w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold">
+                            <button class="w-full bg-slate-800 text-slate-500 border border-slate-700 py-2.5 rounded-lg text-sm font-semibold">
                                 ...
                             </button>
                         </div>
@@ -542,8 +574,8 @@
                 }
                 
                 if (hasVIP) {
+                    // Xóa booking trên web, KHÔNG can thiệp set parking_slots nữa
                     db.ref(baseRef + '/bookings/' + bookedSlotId).remove();
-                    db.ref(baseRef + '/parking_slots/' + bookedSlotId).set(0);
                     db.ref(baseRef + '/users/' + currentUser.uid).update({ is_vip_session: true });
                     alert("🚗 Đã nhận diện VÉ VIP! Lệnh vào đã gửi. Barie sẽ mở!");
                 } else {
@@ -600,7 +632,7 @@
                             }
                         }
                         alert(`⚠️ TỪ CHỐI GIAO DỊCH: Bạn đang giữ chỗ tại ô ${alreadyBookedSlot}! Mỗi tài khoản chỉ được đặt tối đa 1 chỗ. Vui lòng hủy ô cũ hoặc hoàn thành lượt gửi xe hiện tại trước khi đặt ô mới.`);
-                        return; // Chặn lập tức, không chạy các lệnh trừ tiền bên dưới
+                        return;
                     }
 
                     // NẾU HỢP LỆ THÌ BẮT ĐẦU TRỪ TIỀN
@@ -613,7 +645,8 @@
                         }
                         
                         db.ref(baseRef + '/users/' + currentUser.uid).update({ wallet_balance: balance - 2000 });
-                        db.ref(baseRef + '/parking_slots/' + slotId).set(1);
+                        
+                        // KHÔNG can thiệp set parking_slots nữa
                         db.ref(baseRef + '/bookings/' + slotId).set({
                             uid: currentUser.uid,
                             timestamp: Date.now(),
@@ -624,7 +657,7 @@
                 } 
                 else if (bookingData.uid === currentUser.uid) {
                     if(confirm("Bạn muốn hủy giữ chỗ? (Lưu ý: Tiền cọc 2.000đ sẽ KHÔNG được hoàn lại)")) {
-                        db.ref(baseRef + '/parking_slots/' + slotId).set(0);
+                        // KHÔNG can thiệp set parking_slots nữa
                         db.ref(baseRef + '/bookings/' + slotId).remove();
                         alert("Đã hủy đặt chỗ!");
                     }
